@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>Trace & Learn</title>
+    <!-- Google Fonts Link -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Baloo+Bhai+2:wght@500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #29b6f6; /* Light Blue */
+            --secondary-color: #ffca28; /* Amber */
+            --accent-color: #66bb6a; /* Green */
+            --trace-color: #333; /* Darker ink for better visibility */
+            --font-english: 'Fredoka One', cursive;
+            --font-hindi: 'Baloo Bhai 2', cursive;
+        }
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; font-family: var(--font-english);
+            background: linear-gradient(135deg, #81d4fa, #4fc3f7);
+            touch-action: none; position: relative;
+        }
+        .game-container {
+            width: 100%; height: 100%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; position: relative;
+        }
+        #word-canvas-container {
+            position: relative; display: flex; align-items: center;
+            justify-content: center; margin-bottom: 20px;
+        }
+        canvas { position: absolute; top: 0; left: 0; }
+        #text-container {
+            font-size: clamp(4rem, 20vw, 8rem); color: rgba(255, 255, 255, 0.4);
+            letter-spacing: 15px; padding: 20px; text-align: center;
+        }
+        .hindi-word { font-family: var(--font-hindi); font-weight: 500; }
+        .controls {
+            position: absolute; bottom: 20px; left: 0; width: 100%;
+            display: flex; justify-content: space-around; align-items: center;
+            padding: 0 10px; box-sizing: border-box;
+        }
+        .icon-button {
+            background-color: var(--secondary-color); border: none; border-radius: 50%;
+            width: 60px; height: 60px; font-size: 30px; color: white;
+            cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            transition: transform 0.2s; display: flex; align-items: center; justify-content: center;
+        }
+        .icon-button:active { transform: scale(0.9); }
+        #home-button { background-color: #ef5350; }
+        #sound-toggle { background-color: #ab47bc; }
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.6); display: flex; align-items: center;
+            justify-content: center; z-index: 100;
+        }
+        .modal-content {
+            background: white; padding: 20px; border-radius: 20px; width: 80%;
+            max-width: 400px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .modal-content h2 { font-size: 2rem; margin-top: 0; color: var(--primary-color); }
+        .modal-content button {
+            background-color: var(--accent-color); color: white; border: none;
+            border-radius: 12px; padding: 15px 25px; font-size: 1.2rem;
+            font-family: var(--font-english); margin: 5px; cursor: pointer; width: 80%;
+        }
+        #custom-word-input {
+            width: calc(80% - 20px); padding: 10px; margin-bottom: 10px;
+            border-radius: 8px; border: 2px solid #ddd; font-size: 1.2rem; text-transform: uppercase;
+        }
+        #confetti-container {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; z-index: 999; overflow: hidden;
+        }
+        .confetti { position: absolute; width: 10px; height: 10px; background-color: red; opacity: 0; }
+    </style>
+</head>
+<body>
+
+    <!-- ======== AUDIO ELEMENTS START ======== -->
+    <audio id="bgm-sound" src="assets/background-music.mp3" loop></audio>
+    <audio id="cheer-sound" src="assets/cheer.mp3"></audio>
+    <audio id="click-sound" src="assets/click.mp3"></audio>
+    <audio id="marker-sound" src="assets/marker-sound.mp3" loop></audio> <!-- MARKER SOUND ADDED -->
+    <!-- ======== AUDIO ELEMENTS END ======== -->
+
+    <div class="game-container">
+        <div id="word-canvas-container">
+            <div id="text-container"></div>
+            <canvas id="trace-canvas"></canvas>
+        </div>
+        <div class="controls">
+            <button id="home-button" class="icon-button">🏠</button>
+            <button id="prev-word" class="icon-button">↩️</button>
+            <button id="next-word" class="icon-button">↪️</button>
+            <button id="sound-toggle" class="icon-button">🔊</button>
+        </div>
+    </div>
+    <div id="menu-modal" class="modal">
+        <div class="modal-content">
+            <h2>Trace & Learn</h2>
+            <button id="mode-english">🅰️ English Words</button>
+            <button id="mode-hindi">🇮🇳 Hindi Words</button>
+            <div>
+                 <input type="text" id="custom-word-input" placeholder="MOM, DAD..." maxlength="5">
+                 <button id="mode-custom">🔤 Custom Word</button>
+            </div>
+        </div>
+    </div>
+    <div id="confetti-container"></div>
+
+    <script>
+        const words = {
+            english: ["CAT", "SUN", "DOG", "BAT"],
+            hindi: ["राम", "फल", "घर", "वन"]
+        };
+        let currentMode = 'english';
+        let wordIndex = 0;
+        let isSoundOn = true;
+        
+        const textContainer = document.getElementById('text-container');
+        const canvas = document.getElementById('trace-canvas');
+        const ctx = canvas.getContext('2d');
+        const menuModal = document.getElementById('menu-modal');
+
+        // ======== AUDIO CONTROL START ========
+        const bgmSound = document.getElementById('bgm-sound');
+        const cheerSound = document.getElementById('cheer-sound');
+        const clickSound = document.getElementById('click-sound');
+        const markerSound = document.getElementById('marker-sound'); // Marker sound element
+
+        function playSound(soundElement) {
+            if (isSoundOn && soundElement) {
+                soundElement.currentTime = 0;
+                soundElement.play().catch(e => {});
+            }
+        }
+        
+        function pauseSound(soundElement) {
+            if (soundElement) {
+                soundElement.pause();
+            }
+        }
+
+        document.getElementById('sound-toggle').addEventListener('click', () => {
+            isSoundOn = !isSoundOn;
+            document.getElementById('sound-toggle').textContent = isSoundOn ? '🔊' : '🔇';
+            if (isSoundOn) {
+                bgmSound.play().catch(e => {});
+            } else {
+                bgmSound.pause();
+                pauseSound(markerSound); // Stop marker sound if sound is turned off
+            }
+        });
+        // ======== AUDIO CONTROL END ========
+        
+        function setupCanvas() {
+            const rect = textContainer.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            // This now clears the canvas ONLY when a new word is loaded
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = 'var(--trace-color)';
+            ctx.lineWidth = 25; // Slightly thicker ink
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+        }
+
+        function loadWord() {
+            const wordList = words[currentMode];
+            const word = wordList[wordIndex];
+            textContainer.textContent = word;
+            textContainer.className = (currentMode === 'hindi') ? 'hindi-word' : '';
+            setTimeout(setupCanvas, 50);
+        }
+        
+        let tracePoints = [];
+        let tracing = false;
+        let totalDrawnLength = 0; // Total length drawn for the whole word
+
+        function handleStart(e) {
+            e.preventDefault();
+            tracing = true;
+            playSound(markerSound); // Play marker sound on touch start
+            
+            const pos = getTouchPos(e);
+            tracePoints = [{ x: pos.x, y: pos.y }];
+
+            // IMPORTANT: Canvas is NOT cleared here anymore.
+            // This keeps previous strokes on the screen.
+        }
+
+        function handleMove(e) {
+            if (!tracing) return;
+            e.preventDefault();
+            const pos = getTouchPos(e);
+            tracePoints.push({ x: pos.x, y: pos.y });
+
+            // Redraw the current stroke smoothly
+            ctx.beginPath();
+            ctx.moveTo(tracePoints[0].x, tracePoints[0].y);
+            for(let i = 1; i < tracePoints.length; i++) {
+                ctx.lineTo(tracePoints[i].x, tracePoints[i].y);
+            }
+            ctx.stroke();
+        }
+        
+        function handleEnd() {
+            if (!tracing) return;
+            tracing = false;
+            pauseSound(markerSound); // Stop marker sound on touch end
+
+            // Add the length of the completed stroke to the total
+            for (let i = 1; i < tracePoints.length; i++) {
+                totalDrawnLength += Math.hypot(tracePoints[i].x - tracePoints[i-1].x, tracePoints[i].y - tracePoints[i-1].y);
+            }
+            tracePoints = [];
+
+            // Check if the total drawn length is enough to complete the word
+            if (totalDrawnLength > textContainer.textContent.length * 150) {
+                wordCompleted();
+            }
+        }
+
+        function getTouchPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches ? e.touches[0] : e;
+            return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+        }
+
+        function wordCompleted() {
+            tracing = false;
+            pauseSound(markerSound); // Stop sound if it's somehow still playing
+            playSound(cheerSound);
+            playConfetti();
+            totalDrawnLength = 0; // Reset total length for the next word
+            
+            setTimeout(goToNextWord, 1500);
+        }
+        
+        function goToNextWord() {
+            wordIndex = (wordIndex + 1) % words[currentMode].length;
+            loadWord();
+        }
+
+        function goToPrevWord() {
+            playSound(clickSound);
+            wordIndex = (wordIndex - 1 + words[currentMode].length) % words[currentMode].length;
+            loadWord();
+        }
+
+        function playConfetti() {
+            const container = document.getElementById('confetti-container');
+            for (let i = 0; i < 50; i++) {
+                const c = document.createElement('div');
+                c.classList.add('confetti');
+                c.style.left = `${Math.random()*100}vw`;
+                c.style.backgroundColor = `hsl(${Math.random()*360}, 100%, 50%)`;
+                c.style.animation = `fall 3s linear ${Math.random()*2}s forwards`;
+                container.appendChild(c);
+                setTimeout(() => c.remove(), 4000);
+            }
+        }
+        
+        document.body.insertAdjacentHTML("beforeend", `<style>@keyframes fall{to{transform:translateY(100vh) rotate(360deg);opacity:1;}}</style>`);
+
+        // Event Listeners
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('touchmove', handleMove);
+        canvas.addEventListener('touchend', handleEnd);
+        
+        document.getElementById('next-word').addEventListener('click', () => { playSound(clickSound); goToNextWord(); });
+        document.getElementById('prev-word').addEventListener('click', goToPrevWord);
+        document.getElementById('home-button').addEventListener('click', () => { playSound(clickSound); menuModal.style.display = 'flex'; });
+
+        function startGame(mode) {
+            playSound(clickSound);
+            currentMode = mode;
+            wordIndex = 0;
+            totalDrawnLength = 0; // Reset length counter
+            loadWord();
+            menuModal.style.display = 'none';
+            if (isSoundOn) bgmSound.play().catch(e => {});
+        }
+
+        document.getElementById('mode-english').addEventListener('click', () => startGame('english'));
+        document.getElementById('mode-hindi').addEventListener('click', () => startGame('hindi'));
+        document.getElementById('mode-custom').addEventListener('click', () => {
+            const input = document.getElementById('custom-word-input');
+            const newWord = input.value.trim().toUpperCase();
+            if (newWord) {
+                words.custom = [newWord];
+                startGame('custom');
+                input.value = '';
+            }
+        });
+        
+        window.addEventListener('resize', setupCanvas);
+        loadWord();
+        menuModal.style.display = 'flex';
+    </script>
+</body>
+</html>
